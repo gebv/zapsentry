@@ -3,20 +3,41 @@ package zapsentry
 import (
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/getsentry/sentry-go"
 	"go.uber.org/zap/zapcore"
 )
 
-func NewCore(cfg Configuration, factory SentryClientFactory) (zapcore.Core, error) {
-	client, err := factory()
-	if err != nil {
-		return zapcore.NewNopCore(), err
+// Set returns logger with sentry client.
+func Set(l *zap.Logger, opts ...Option) (*zap.Logger, error) {
+	cfg := &Configuration{}
+	for _, opt := range opts {
+		opt(cfg)
 	}
 
-	core := core{
+	if cfg.ClientOptions.Dsn == "" || cfg.ClientOptions.Dsn == "test" {
+		return l, nil
+	}
+
+	var sentryCore zapcore.Core
+	client, err := sentry.NewClient(cfg.ClientOptions)
+	if err != nil {
+		sentryCore = zapcore.NewNopCore()
+	} else {
+		sentryCore = newCore(*cfg, client)
+	}
+
+	return l.WithOptions(zap.WrapCore(func(core zapcore.Core) zapcore.Core {
+		return zapcore.NewTee(core, sentryCore)
+	})), err
+}
+
+func newCore(cfg Configuration, client *sentry.Client) *core {
+	core := &core{
 		client:       client,
 		cfg:          &cfg,
-		LevelEnabler: cfg.Level,
+		LevelEnabler: cfg.LevelEnabler,
 		flushTimeout: 5 * time.Second,
 		fields:       make(map[string]interface{}),
 	}
@@ -25,7 +46,7 @@ func NewCore(cfg Configuration, factory SentryClientFactory) (zapcore.Core, erro
 		core.flushTimeout = cfg.FlushTimeout
 	}
 
-	return &core, nil
+	return core
 }
 
 func (c *core) With(fs []zapcore.Field) zapcore.Core {
@@ -33,7 +54,7 @@ func (c *core) With(fs []zapcore.Field) zapcore.Core {
 }
 
 func (c *core) Check(ent zapcore.Entry, ce *zapcore.CheckedEntry) *zapcore.CheckedEntry {
-	if c.cfg.Level.Enabled(ent.Level) {
+	if c.cfg.LevelEnabler.Enabled(ent.Level) {
 		return ce.AddCore(ent, c)
 	}
 	return ce
@@ -50,9 +71,14 @@ func (c *core) Write(ent zapcore.Entry, fs []zapcore.Field) error {
 	event.Extra = clone.fields
 	event.Tags = c.cfg.Tags
 
-	if !c.cfg.DisableStacktrace {
+	if !c.cfg.Stacktrace {
 		trace := sentry.NewStacktrace()
+
 		if trace != nil {
+			if c.cfg.TraceSkipFrames > 0 && len(trace.Frames) >= c.cfg.TraceSkipFrames {
+				trace.Frames = trace.Frames[:len(trace.Frames)-c.cfg.TraceSkipFrames]
+			}
+
 			event.Exception = []sentry.Exception{{
 				Type:       ent.Message,
 				Value:      ent.Caller.TrimmedPath(),
@@ -105,14 +131,6 @@ func (c *core) with(fs []zapcore.Field) *core {
 	}
 }
 
-type ClientGetter interface {
-	GetClient() *sentry.Client
-}
-
-func (c *core) GetClient() *sentry.Client {
-	return c.client
-}
-
 type core struct {
 	client *sentry.Client
 	cfg    *Configuration
@@ -120,4 +138,26 @@ type core struct {
 	flushTimeout time.Duration
 
 	fields map[string]interface{}
+}
+
+func sentrySeverity(lvl zapcore.Level) sentry.Level {
+	switch lvl {
+	case zapcore.DebugLevel:
+		return sentry.LevelDebug
+	case zapcore.InfoLevel:
+		return sentry.LevelInfo
+	case zapcore.WarnLevel:
+		return sentry.LevelWarning
+	case zapcore.ErrorLevel:
+		return sentry.LevelError
+	case zapcore.DPanicLevel:
+		return sentry.LevelFatal
+	case zapcore.PanicLevel:
+		return sentry.LevelFatal
+	case zapcore.FatalLevel:
+		return sentry.LevelFatal
+	default:
+		// Unrecognized levels are fatal.
+		return sentry.LevelFatal
+	}
 }
