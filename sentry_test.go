@@ -1,6 +1,7 @@
 package zapsentry
 
-// tests copy and adapted from https://github.com/plimble/zap-sentry/blob/master/sentry_test.go
+// some tests are copied and adapted from https://github.com/plimble/zap-sentry/blob/master/sentry_test.go
+// helper code coped from github.com/getsentry/sentry-go@v0.4.0/mocks_test.go
 
 import (
 	"fmt"
@@ -46,7 +47,7 @@ func TestSentrySeverityMap(t *testing.T) {
 func TestCoreWith(t *testing.T) {
 
 	// Ensure that we're not sharing map references across generations.
-	parent := newCore(Configuration{}, nil).With([]zapcore.Field{zap.String("parent", "parent")})
+	parent := NewCore(Configuration{}, nil).With([]zapcore.Field{zap.String("parent", "parent")})
 	elder := parent.With([]zapcore.Field{zap.String("elder", "elder")})
 	younger := parent.With([]zapcore.Field{zap.String("younger", "younger")})
 
@@ -68,7 +69,7 @@ func TestCoreWith(t *testing.T) {
 }
 
 func TestCoreCheck(t *testing.T) {
-	core := newCore(Configuration{
+	core := NewCore(Configuration{
 		LevelEnabler: zapcore.ErrorLevel,
 	}, nil)
 	assert.Nil(t, core.Check(zapcore.Entry{}, nil), "Expected nil CheckedEntry for disabled levels.")
@@ -79,7 +80,7 @@ func TestCoreCheck(t *testing.T) {
 func TestConfigWrite(t *testing.T) {
 	client, transport := setupClientTest()
 	require.NotNil(t, client)
-	core := newCore(Configuration{
+	core := NewCore(Configuration{
 		LevelEnabler:    zapcore.ErrorLevel,
 		TraceSkipFrames: 2,
 	}, client)
@@ -116,7 +117,7 @@ func TestConfigBuild(t *testing.T) {
 func TestStackTraces(t *testing.T) {
 	client, transport := setupClientTest()
 	require.NotNil(t, client)
-	core := newCore(Configuration{
+	core := NewCore(Configuration{
 		LevelEnabler:    zapcore.ErrorLevel,
 		TraceSkipFrames: 2,
 	}, client)
@@ -152,7 +153,7 @@ func TestStackTraces(t *testing.T) {
 						{
 							Filename: "sentry_test.go",
 							Function: "TestStackTraces",
-							Module:   "github.com/TheZeroSlave/zapsentry",
+							Module:   "github.com/gebv/zapsentry/v2",
 						},
 						{
 							Filename: "logger.go",
