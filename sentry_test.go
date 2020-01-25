@@ -3,16 +3,18 @@ package zapsentry
 // tests copy and adapted from https://github.com/plimble/zap-sentry/blob/master/sentry_test.go
 
 import (
+	"fmt"
+	"io"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/getsentry/sentry-go"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 func TestSentrySeverityMap(t *testing.T) {
@@ -48,9 +50,9 @@ func TestCoreWith(t *testing.T) {
 	elder := parent.With([]zapcore.Field{zap.String("elder", "elder")})
 	younger := parent.With([]zapcore.Field{zap.String("younger", "younger")})
 
-	parentC := asCore(t, parent)
-	elderC := asCore(t, elder)
-	youngerC := asCore(t, younger)
+	parentC := assertCore(t, parent)
+	elderC := assertCore(t, elder)
+	youngerC := assertCore(t, younger)
 
 	assert.Equal(t, map[string]interface{}{
 		"parent": "parent",
@@ -111,7 +113,81 @@ func TestConfigBuild(t *testing.T) {
 	assert.Error(t, err, "Expected invalid DSN to make config building fail.")
 }
 
-func asCore(t testing.TB, iface zapcore.Core) *core {
+func TestStackTraces(t *testing.T) {
+	client, transport := setupClientTest()
+	require.NotNil(t, client)
+	core := newCore(Configuration{
+		LevelEnabler:    zapcore.ErrorLevel,
+		TraceSkipFrames: 2,
+	}, client)
+	require.NotNil(t, core.client)
+
+	err1 := io.EOF
+	// err2 := errors.Wrap(err1, "second error")
+	// err3 := errors.WithStack(err2)
+	// err4 := errors.WithMessage(err3, "fourth error")
+	err5 := errors.Wrap(err1, "fifth error")
+
+	l := zap.New(core)
+	l.Error("Log message", zap.Error(err5))
+
+	require.Len(t, transport.events, 1)
+	actual := transport.events[0]
+	expected := &sentry.Event{
+		Message:   "Log message",
+		Timestamp: actual.Timestamp,
+		Level:     "error",
+		Platform:  "go",
+		Extra: map[string]interface{}{
+			"error":        err5.Error(),
+			"errorVerbose": fmt.Sprintf("%+v", err5),
+		},
+		Exception: []sentry.Exception{
+			{
+				Type:   "ValueError",
+				Value:  "Log message",
+				Module: "undefined",
+				Stacktrace: &sentry.Stacktrace{
+					Frames: []sentry.Frame{
+						{
+							Filename: "sentry_test.go",
+							Function: "TestStackTraces",
+							Module:   "github.com/TheZeroSlave/zapsentry",
+						},
+						{
+							Filename: "logger.go",
+							Function: "go.uber.org/zap.(*Logger).Error",
+							Module:   "",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	assert.Equal(t, expected.Message, actual.Message)
+	assert.Equal(t, expected.Timestamp, actual.Timestamp)
+	assert.Equal(t, expected.Level, actual.Level)
+	assert.Equal(t, expected.Platform, actual.Platform)
+	assert.Equal(t, expected.Extra, actual.Extra)
+
+	require.Len(t, expected.Exception, 1)
+	assert.Equal(t, expected.Exception[0].Type, actual.Exception[0].Type)
+	assert.Equal(t, expected.Exception[0].Value, actual.Exception[0].Value)
+	assert.Equal(t, expected.Exception[0].Module, actual.Exception[0].Module)
+
+	require.NotNil(t, expected.Exception[0].Stacktrace)
+	require.Len(t, expected.Exception[0].Stacktrace.Frames, 2)
+	assert.Equal(t, expected.Exception[0].Stacktrace.Frames[0].Filename, actual.Exception[0].Stacktrace.Frames[0].Filename)
+	assert.Equal(t, expected.Exception[0].Stacktrace.Frames[0].Function, actual.Exception[0].Stacktrace.Frames[0].Function)
+	assert.Equal(t, expected.Exception[0].Stacktrace.Frames[0].Module, actual.Exception[0].Stacktrace.Frames[0].Module)
+
+	assert.Equal(t, expected.Exception[0].Stacktrace.Frames[1].Filename, actual.Exception[0].Stacktrace.Frames[1].Filename)
+	assert.Equal(t, expected.Exception[0].Stacktrace.Frames[1].Function, actual.Exception[0].Stacktrace.Frames[1].Function)
+	assert.Equal(t, expected.Exception[0].Stacktrace.Frames[1].Module, actual.Exception[0].Stacktrace.Frames[1].Module)
+}
+
+func assertCore(t testing.TB, iface zapcore.Core) *core {
 	c, ok := iface.(*core)
 	require.True(t, ok, "Failed to cast Core to sentry *core.")
 	return c
