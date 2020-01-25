@@ -9,6 +9,17 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+// SetWith returns logger with sentry client.
+func SetWith(l *zap.Logger, cfg Configuration, c *sentry.Client) (*zap.Logger, error) {
+	if c != nil {
+		return l.WithOptions(zap.WrapCore(func(core zapcore.Core) zapcore.Core {
+			return zapcore.NewTee(core, newCore(cfg, c))
+		})), nil
+	}
+
+	return build(l, cfg)
+}
+
 // Set returns logger with sentry client.
 func Set(l *zap.Logger, opts ...Option) (*zap.Logger, error) {
 	cfg := &Configuration{}
@@ -20,12 +31,16 @@ func Set(l *zap.Logger, opts ...Option) (*zap.Logger, error) {
 		return l, nil
 	}
 
+	return build(l, *cfg)
+}
+
+func build(l *zap.Logger, cfg Configuration) (*zap.Logger, error) {
 	var sentryCore zapcore.Core
 	client, err := sentry.NewClient(cfg.ClientOptions)
 	if err != nil {
 		sentryCore = zapcore.NewNopCore()
 	} else {
-		sentryCore = newCore(*cfg, client)
+		sentryCore = newCore(cfg, client)
 	}
 
 	return l.WithOptions(zap.WrapCore(func(core zapcore.Core) zapcore.Core {
