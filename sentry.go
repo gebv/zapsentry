@@ -8,6 +8,13 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+// DefaultOptions commonly used options.
+var DefaultOptions = []Option{
+	LevelEnabler(zap.ErrorLevel),
+	TraceSkipFrames(3), // skip 3 first layers in stacktraces
+	EnableStacktrace(),
+}
+
 // SetWith returns logger with sentry client.
 func SetWith(l *zap.Logger, cfg Configuration, c *sentry.Client) (*zap.Logger, error) {
 	if c != nil {
@@ -86,7 +93,7 @@ func (c *core) Write(ent zapcore.Entry, fs []zapcore.Field) error {
 	event.Extra = clone.fields
 	event.Tags = c.cfg.Tags
 
-	if !c.cfg.Stacktrace {
+	if c.cfg.Stacktrace {
 		trace := sentry.NewStacktrace()
 
 		if trace != nil {
