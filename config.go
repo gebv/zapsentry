@@ -21,6 +21,12 @@ type Configuration struct {
 
 type Option func(*Configuration)
 
+func ServerName(name string) Option {
+	return func(opt *Configuration) {
+		opt.ClientOptions.ServerName = name
+	}
+}
+
 func TraceSkipFrames(i int) Option {
 	return func(opt *Configuration) {
 		opt.TraceSkipFrames = i
