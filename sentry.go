@@ -12,7 +12,7 @@ import (
 func SetWith(l *zap.Logger, cfg Configuration, c *sentry.Client) (*zap.Logger, error) {
 	if c != nil {
 		return l.WithOptions(zap.WrapCore(func(core zapcore.Core) zapcore.Core {
-			return zapcore.NewTee(core, newCore(cfg, c))
+			return zapcore.NewTee(core, NewCore(cfg, c))
 		})), nil
 	}
 
@@ -39,7 +39,7 @@ func build(l *zap.Logger, cfg Configuration) (*zap.Logger, error) {
 	if err != nil {
 		sentryCore = zapcore.NewNopCore()
 	} else {
-		sentryCore = newCore(cfg, client)
+		sentryCore = NewCore(cfg, client)
 	}
 
 	return l.WithOptions(zap.WrapCore(func(core zapcore.Core) zapcore.Core {
@@ -47,7 +47,8 @@ func build(l *zap.Logger, cfg Configuration) (*zap.Logger, error) {
 	})), err
 }
 
-func newCore(cfg Configuration, client *sentry.Client) *core {
+// NewCore returns implementation of zapcore.Core.
+func NewCore(cfg Configuration, client *sentry.Client) *core {
 	core := &core{
 		client:       client,
 		cfg:          &cfg,
@@ -154,6 +155,9 @@ type core struct {
 
 	fields map[string]interface{}
 }
+
+// check interface
+var _ zapcore.Core = (*core)(nil)
 
 func sentrySeverity(lvl zapcore.Level) sentry.Level {
 	switch lvl {
