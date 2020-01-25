@@ -83,6 +83,7 @@ func TestConfigWrite(t *testing.T) {
 	core := NewCore(Configuration{
 		LevelEnabler:    zapcore.ErrorLevel,
 		TraceSkipFrames: 2,
+		Stacktrace:      true,
 	}, client)
 	require.NotNil(t, core.client)
 
@@ -120,6 +121,7 @@ func TestStackTraces(t *testing.T) {
 	core := NewCore(Configuration{
 		LevelEnabler:    zapcore.ErrorLevel,
 		TraceSkipFrames: 2,
+		Stacktrace:      true,
 	}, client)
 	require.NotNil(t, core.client)
 
