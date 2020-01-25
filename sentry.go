@@ -3,9 +3,8 @@ package zapsentry
 import (
 	"time"
 
-	"go.uber.org/zap"
-
 	"github.com/getsentry/sentry-go"
+	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
@@ -95,8 +94,9 @@ func (c *core) Write(ent zapcore.Entry, fs []zapcore.Field) error {
 			}
 
 			event.Exception = []sentry.Exception{{
-				Type:       ent.Message,
-				Value:      ent.Caller.TrimmedPath(),
+				Type:       "ValueError",
+				Value:      ent.Message,
+				Module:     ent.Caller.TrimmedPath(),
 				Stacktrace: trace,
 			}}
 		}
